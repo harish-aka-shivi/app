@@ -50,6 +50,7 @@ import { openRoomArchived } from "../../Redux/dialogs";
 import { ChatMessagesContextWrapper } from "../../Contexts/ChatMessagesContext";
 import EventSessionContainerTheme from "./EventSessionContainerTheme";
 import { PollsContextWrapper } from "../../Contexts/PollsContext";
+import useMuteAudioVideo from "../../Hooks/useMuteAudioVideo";
 
 const EventSessionContainerWrapper = (props) => {
   const dispatch = useDispatch();
@@ -71,6 +72,8 @@ const EventSessionContainerWrapper = (props) => {
     () => (originalSessionId ? originalSessionId.toLowerCase() : null),
     [originalSessionId]
   );
+
+  const { muteVideo, muteAudio, setMuteAudio, setMuteVideo } = useMuteAudioVideo(sessionId);
 
   const userId = useMemo(() => (userAuth ? userAuth.uid : null), [userAuth]);
 
@@ -371,7 +374,11 @@ const EventSessionContainerWrapper = (props) => {
         setJitsiApi,
         showSmallPlayer,
         setShowSmallPlayer,
-        miniPlayerEnabled
+        miniPlayerEnabled,
+        muteVideo,
+        muteAudio,
+        setMuteAudio,
+        setMuteVideo,
       }}
     >
       <VerticalNavBarContextWrapper>
