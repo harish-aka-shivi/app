@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useContext } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   useCollectionData,
   useDocumentData
@@ -49,13 +49,9 @@ import EventSessionContainer from "./EventSessionContainer";
 import { openRoomArchived } from "../../Redux/dialogs";
 import { ChatMessagesContextWrapper } from "../../Contexts/ChatMessagesContext";
 import EventSessionContainerTheme from "./EventSessionContainerTheme";
-<<<<<<< HEAD
+
 import { PollsContextWrapper } from "../../Contexts/PollsContext";
-import useMuteAudioVideo from "../../Hooks/useMuteAudioVideo";
-=======
-import TechnicalCheckContext from "./TechnicalCheckContext";
 import AudioVideoCheckDialog from "../../Components/EventSession/AudioVideoCheckDialog";
->>>>>>> 6be1a75... feat: add video setting in dropdown
 
 const EventSessionContainerWrapper = (props) => {
   const dispatch = useDispatch();
@@ -344,7 +340,6 @@ const EventSessionContainerWrapper = (props) => {
     dispatch(crossCheckKeepAlives(keepALivesDB));
   }, DEFAULT_KEEP_ALIVE_CHECK_INTERVAL);
 
-  const { showAudioVideoCheck} = useContext(TechnicalCheckContext);
 
   // --- loading screen ---
   if (
@@ -387,16 +382,9 @@ const EventSessionContainerWrapper = (props) => {
           <PollsContextWrapper>
             <EventSessionContainerTheme>
               <EventSessionContainer />
-              {
-                showAudioVideoCheck && 
-                <AudioVideoCheckDialog
-                  sessionId={sessionId}
-                />
-              }
             </EventSessionContainerTheme>
           </PollsContextWrapper>
         </ChatMessagesContextWrapper>
->
       </VerticalNavBarContextWrapper>
     </JitsiContext.Provider>
   );

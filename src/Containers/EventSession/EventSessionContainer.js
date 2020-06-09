@@ -351,8 +351,8 @@ const EventSessionContainer = (props) => {
               </Box>
             )}
 
-            {userCurrentLocation === VERTICAL_NAV_OPTIONS.mainStage && (
-              <ConferenceRoomContainer />
+            {userCurrentLocation === VERTICAL_NAV_OPTIONS.mainStage && (  
+                <ConferenceRoomContainer />
             )}
             {userGroup && (
               <>
