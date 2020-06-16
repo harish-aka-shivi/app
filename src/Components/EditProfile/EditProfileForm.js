@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
-import { withStyles } from "@material-ui/core/styles";
-import { Button, TextField } from "@material-ui/core";
+import { makeStyles } from "@material-ui/core/styles";
+import { Button, TextField, Typography } from "@material-ui/core";
 import Grid from "@material-ui/core/Grid";
 import InputAdornment from "@material-ui/core/InputAdornment";
 import FormGroup from "@material-ui/core/FormGroup";
@@ -11,33 +11,44 @@ import ParticipantCard from "../EventSession/ParticipantCard";
 import ProfileChips from "./ProfileChips";
 import IconButton from "@material-ui/core/IconButton";
 import AddIcon from "@material-ui/icons/Add";
-import uuidv1 from "uuid/v1";
+import { v1 as uuidv1 } from "uuid";
 import { getUserDb, updateUser } from "../../Modules/userOperations";
-import Checkbox from "@material-ui/core/Checkbox";
+// import Checkbox from "@material-ui/core/Checkbox";
 import LinkedinIcon from "../../Assets/Icons/Linkedin";
 import TwitterIcon from "../../Assets/Icons/Twitter";
 import KeybaseIcon from "../../Assets/Icons/Keybase";
+import LocationAutoComplete from "../Misc/LocationAutoComplete";
+import useIsMounted from "../../Hooks/useIsMounted";
 // import LocationAutoComplete from "../Misc/LocationAutoComplete";
 
-const styles = (theme) => ({
+const useStyles = makeStyles((theme) => ({
   row: {
-    flexDirection: "row",
+    flexDirection: "row"
   },
   button: {
-    marginTop: theme.spacing(2),
+    marginTop: theme.spacing(2)
   },
   bottom: {
     textAlign: "center",
-    marginTop: 16,
+    marginTop: 8
   },
   textField: {
-    marginTop: 16,
+    marginTop: 16
     // marginBottom: 16
   },
-});
+  star: {
+    fontSize: 16,
+    marginRight: 4
+  },
+  termsContainer: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center"
+  }
+}));
 
-const getUserDefaultValues = (user) => {
-  let { displayName, isAnonymous } = user;
+const getUserDefaultValues = (userAuth) => {
+  let { displayName, isAnonymous } = userAuth;
   let firstName = "";
   let lastName = "";
   if (displayName) {
@@ -45,15 +56,17 @@ const getUserDefaultValues = (user) => {
     firstName = splitted[0];
     lastName = splitted[splitted.length - 1];
   }
+  // IF UPDATED, don't forget to update the registerNewUser on the userOperations.js file
   return {
-    id: user.uid,
+    id: userAuth.uid,
     firstName,
     lastName,
-    email: user.email ? user.email : "",
+    email: userAuth.email ? userAuth.email : "",
     linkedin: "",
     twitter: "",
+    keybase: "",
     emailPublic: false,
-    avatarUrl: user.photoURL,
+    avatarUrl: userAuth.photoURL ? userAuth.photoURL : "",
     interest: "",
     twitterUrl: null,
     linkedinUrl: null,
@@ -63,6 +76,7 @@ const getUserDefaultValues = (user) => {
     isAnonymous,
     checkedTerms: false,
     checkedNewsletter: false,
+    location: ""
   };
 };
 
@@ -71,69 +85,79 @@ const twitterUrlStatic = "https://twitter.com/";
 const keybaseUrlStatic = "https://keybase.io/";
 
 function EditProfileForm(props) {
-  const { classes, user, sessionId, profileUpdatedCallback } = props;
+  const { userAuth, sessionId, profileUpdatedCallback } = props;
+  const classes = useStyles();
 
-  let [values, setValues] = React.useState(getUserDefaultValues(user));
+  let [values, setValues] = React.useState(getUserDefaultValues(userAuth));
+  // let [dbCheckNewsletter, setDbCheckNewsletter] = React.useState(null);
   let [errors, setErrors] = React.useState({});
   const [interestsChips, setInterestsChips] = React.useState([]);
-  const [updating, setUpdating] = React.useState(false);
 
+  const [updating, setUpdating] = React.useState(false);
+  const mounted = useIsMounted();
   useEffect(() => {
     const fetchUser = async () => {
-      if (!user) {
+      if (!userAuth) {
         return;
       }
-      let userDb = await getUserDb(user.uid);
+      let userDb = await getUserDb(userAuth.uid);
+      if (mounted) {
+        if (userDb) {
+          let {
+            firstName,
+            lastName,
+            email,
+            linkedin,
+            twitter,
+            keybase,
+            emailPublic,
+            avatarUrl,
+            twitterUrl,
+            linkedinUrl,
+            keybaseUrl,
+            interestsChips,
+            company,
+            companyTitle,
+            checkedTerms,
+            checkedNewsletter,
+            location,
+            locationDetails
+          } = userDb;
 
-      if (userDb) {
-        let {
-          firstName,
-          lastName,
-          email,
-          linkedin,
-          twitter,
-          keybase,
-          emailPublic,
-          avatarUrl,
-          twitterUrl,
-          linkedinUrl,
-          keybaseUrl,
-          interestsChips,
-          company,
-          companyTitle,
-          checkedTerms,
-          checkedNewsletter,
-        } = userDb;
+          const x = (str) => (str ? str : "");
 
-        const x = (str) => (str ? str : "");
+          // IF UPDATED, don't forget to update the registerNewUser on the userOperations.js file
+          setValues((v) => ({
+            ...v,
+            firstName: x(firstName),
+            lastName: x(lastName),
+            email: x(email),
+            linkedin: x(linkedin),
+            twitter: x(twitter),
+            keybase: x(keybase),
+            emailPublic: emailPublic === true,
+            avatarUrl: x(avatarUrl),
+            twitterUrl: x(twitterUrl),
+            linkedinUrl: x(linkedinUrl),
+            keybaseUrl: x(keybaseUrl),
+            interestsChips: interestsChips ? interestsChips : [],
+            company: x(company),
+            companyTitle: x(companyTitle),
+            checkedNewsletter: checkedNewsletter === true,
+            checkedTerms: checkedTerms === true,
+            location: x(location),
+            locationDetails: locationDetails ? locationDetails : null
+          }));
 
-        setValues((v) => ({
-          ...v,
-          firstName: x(firstName),
-          lastName: x(lastName),
-          email: x(email),
-          linkedin: x(linkedin),
-          twitter: x(twitter),
-          keybase: x(keybase),
-          emailPublic: emailPublic === true,
-          avatarUrl: x(avatarUrl),
-          twitterUrl: x(twitterUrl),
-          linkedinUrl: x(linkedinUrl),
-          keybaseUrl: x(keybaseUrl),
-          interestsChips: interestsChips ? interestsChips : [],
-          company: x(company),
-          companyTitle: x(companyTitle),
-          checkedNewsletter: checkedNewsletter === true,
-          checkedTerms: checkedTerms === true,
-        }));
-
-        setInterestsChips(interestsChips ? interestsChips : []);
+          setInterestsChips(interestsChips ? interestsChips : []);
+          // setDbCheckNewsletter(checkedNewsletter === true);
+        }
       }
     };
     fetchUser();
-  }, [user]);
+  }, [userAuth, mounted]);
 
-  if (!user && !sessionId) {
+  if (!userAuth && !sessionId) {
     return <p>No session available...</p>;
   }
   const handleUpdateField = (name) => (e) => {
@@ -141,15 +165,23 @@ function EditProfileForm(props) {
     let newValues = { ...values };
     newValues[name] = value;
     if (name === "linkedin") {
-      newValues.linkedinUrl = value.trim() !== "" ? linkedinUrlStatic + value : null;
+      let v = value.includes("linkedin.com")
+        ? value
+        : linkedinUrlStatic + value;
+      v = v.includes("http") ? v : `https://${v}`;
+      newValues.linkedinUrl = value.trim() !== "" ? v : null;
     }
 
     if (name === "twitter") {
-      newValues.twitterUrl = value.trim() !== "" ? twitterUrlStatic + value : null;
+      let v = value.includes("twitter.com") ? value : twitterUrlStatic + value;
+      v = v.includes("http") ? v : `https://${v}`;
+      newValues.twitterUrl = value.trim() !== "" ? v : null;
     }
 
     if (name === "keybase") {
-      newValues.keybaseUrl = value.trim() !== "" ? keybaseUrlStatic + value : null;
+      let v = value.includes("keybase.io") ? value : keybaseUrlStatic + value;
+      v = v.includes("http") ? v : `https://${v}`;
+      newValues.keybaseUrl = value.trim() !== "" ? v : null;
     }
     setValues(newValues);
   };
@@ -181,7 +213,7 @@ function EditProfileForm(props) {
       return;
     }
     setUpdating(true);
-    await updateUser(user.uid, sessionId, values);
+    await updateUser(userAuth.uid, sessionId, values);
     // await fetchUser();
     // snackbar.showMessage("Your profile has been updated successfuly");
     if (profileUpdatedCallback) {
@@ -189,10 +221,30 @@ function EditProfileForm(props) {
     }
     setUpdating(false);
   };
+
+  const handlePictureChanged = (pictureUrl) => {
+    setValues({ ...values, avatarUrl: pictureUrl });
+  };
+  const handleLocationChange = (value) => {
+    if (value) {
+      setValues({
+        ...values,
+        location: value.description,
+        locationDetails: value
+      });
+    } else {
+      setValues({ ...values, location: "", locationDetails: null });
+    }
+  };
+
   return (
     <React.Fragment>
       <div style={{ marginBottom: 32 }}>
-        <ParticipantCard participant={values} />
+        <ParticipantCard
+          participant={values}
+          editPicture={true}
+          onPictureChanged={handlePictureChanged}
+        />
       </div>
       <Grid container justify="space-between" className={classes.textField}>
         <TextField
@@ -217,6 +269,7 @@ function EditProfileForm(props) {
           onChange={handleUpdateField("lastName")}
         />
       </Grid>
+
       <Grid container justify="space-between" className={classes.textField}>
         <TextField
           fullWidth
@@ -280,7 +333,12 @@ function EditProfileForm(props) {
         value={values.shortBio}
         onChange={handleUpdateField("shortBio")}
       /> */}
-      {/* <LocationAutoComplete /> */}
+      <div className={classes.textField} style={{ width: "100%" }}>
+        <LocationAutoComplete
+          onLocationChanged={handleLocationChange}
+          value={values.location}
+        />
+      </div>
       <Grid container justify="space-between" className={classes.textField}>
         <TextField
           fullWidth
@@ -292,7 +350,7 @@ function EditProfileForm(props) {
               <InputAdornment position="start">
                 <LinkedinIcon color="primary" />
               </InputAdornment>
-            ),
+            )
           }}
           style={{ width: "32%" }}
           value={values.linkedin}
@@ -310,7 +368,7 @@ function EditProfileForm(props) {
               <InputAdornment position="start">
                 <TwitterIcon color="primary" />
               </InputAdornment>
-            ),
+            )
           }}
           onChange={handleUpdateField("twitter")}
         />
@@ -326,7 +384,7 @@ function EditProfileForm(props) {
               <InputAdornment position="start">
                 <KeybaseIcon color="primary" />
               </InputAdornment>
-            ),
+            )
           }}
           onChange={handleUpdateField("keybase")}
         />
@@ -365,58 +423,118 @@ function EditProfileForm(props) {
       </Grid>
 
       <div style={{ marginTop: 8 }}>
-        <ProfileChips chips={interestsChips} onDelete={handleNewInterestsChips} />
+        <ProfileChips
+          chips={interestsChips}
+          onDelete={handleNewInterestsChips}
+        />
       </div>
 
-      <div style={{ textAlign: "left", marginTop: 16 }}>
+      {/* <div style={{ textAlign: "left", marginTop: 16 }}>
+        {dbCheckNewsletter !== true && (
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={values.checkedNewsletter}
+                onChange={handleCheckbox("checkedNewsletter")}
+                name="checkedNewsletter"
+                color="primary"
+              />
+            }
+            label={
+              <span>
+                Join Veertly's monthly newsletter and stay updated on new
+                features
+              </span>
+            }
+          />
+        )}
         <FormControlLabel
           control={
-            <Checkbox
-              checked={values.checkedNewsletter}
-              onChange={handleCheckbox("checkedNewsletter")}
-              name="checkedNewsletter"
-              color="primary"
-            />
-          }
-          label={<span>Join our monthly newsletter and stay updated on new features</span>}
-        />
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={values.checkedTerms}
-              onChange={handleCheckbox("checkedTerms")}
-              name="checkedTerms"
-              color="primary"
-            />
+            <div className={classes.termsContainer}>
+              <Checkbox
+                checked={values.checkedTerms}
+                onChange={handleCheckbox("checkedTerms")}
+                name="checkedTerms"
+                color="primary"
+              />
+              {values.checkedTerms !== true && (
+                <Typography
+                  className={classes.star}
+                  color="error"
+                  align="center"
+                  variant="caption"
+                >
+                  *
+                </Typography>
+              )}
+            </div>
           }
           label={
             <span>
               I accept the{" "}
-              <a href="https://veertly.com" target="_blank" rel="noopener noreferrer">
-                Terms of Use
+              <a
+                href="https://veertly.com/terms-of-service/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Terms of Service
               </a>{" "}
               &amp;{" "}
-              <a href="https://veertly.com" target="_blank" rel="noopener noreferrer">
+              <a
+                href="https://veertly.com/privacy-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Privacy Policy
               </a>
             </span>
           }
         />
-      </div>
+      </div> */}
       <div className={classes.bottom}>
+        {/* {values.checkedTerms !== true && (
+          <Typography align="center" color="textSecondary">
+            You need to accept the Terms of Service and the Privacy Policy
+          </Typography>
+        )} */}
         <Button
           variant="contained"
           color="primary"
           type="submit"
           className={classes.button}
           onClick={handleUpdateProfile}
-          disabled={updating || values.checkedTerms !== true}
+          disabled={updating /* || values.checkedTerms !== true */}
         >
           Update Profile
         </Button>
+        <Typography
+          /* variant="caption" */ color="textSecondary"
+          display="block"
+          style={{ marginTop: 24 }}
+        >
+          <span>
+            By proceeding, you accept the{" "}
+            <a
+              href="https://veertly.com/terms-of-service/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Terms of Service
+            </a>{" "}
+            &amp;{" "}
+            <a
+              href="https://veertly.com/privacy-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Privacy Policy
+            </a>
+          </span>
+        </Typography>
       </div>
     </React.Fragment>
   );
 }
 
-export default withStyles(styles)(EditProfileForm);
+// EditProfileForm.whyDidYouRender = true;
+export default EditProfileForm;

@@ -15,7 +15,7 @@ function EventShareIcons(props) {
 
   return (
     <React.Fragment>
-      <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
         <TwitterShareButton title={shareText} url={url}>
           <TwitterIcon size={32} round />
         </TwitterShareButton>

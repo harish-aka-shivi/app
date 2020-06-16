@@ -1,8 +1,10 @@
 import firebase from "./firebaseApp";
-// import uuidv1 from "uuid/v1";
 
 export const conferenceExists = async (sessionId) => {
-  let docRef = firebase.firestore().collection("eventSessionsDetails").doc(sessionId.toLowerCase());
+  let docRef = firebase
+    .firestore()
+    .collection("eventSessionsDetails")
+    .doc(sessionId.toLowerCase());
 
   let docSnapshot = await docRef.get();
   return docSnapshot.exists;
@@ -11,7 +13,7 @@ export const conferenceExists = async (sessionId) => {
 export const userRegisteredEvent = (sessionId) => {
   //, userId, email) => {
   let storageKey = "/veertly/" + sessionId;
-  if (localStorage.getItem(storageKey)) {
+  if (localStorage && localStorage.getItem(storageKey)) {
     return true;
   }
   return false;
@@ -95,7 +97,7 @@ export const registerToEvent = async (eventSession, userId, userDetails) => {
       registrationDate: firebase.firestore.FieldValue.serverTimestamp(),
       title,
       originalSessionId,
-      eventBeginDate: eventBeginDate ? eventBeginDate : null,
+      eventBeginDate: eventBeginDate ? eventBeginDate : null
     });
   localStorage.setItem("/veertly/" + sessionId, true);
 };

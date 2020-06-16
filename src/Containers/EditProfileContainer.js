@@ -3,33 +3,31 @@ import Layout from "./Layouts/CenteredLayout";
 import { useAuthState } from "react-firebase-hooks/auth";
 import firebase from "../Modules/firebaseApp";
 import EditProfileForm from "../Components/EditProfile/EditProfileForm";
+import SplashScreen from "../Components/Misc/SplashScreen";
 import { useHistory, useLocation } from "react-router-dom";
+import routes from "../Config/routes";
 
-export default () => {
-  const [user, initialising, error] = useAuthState(firebase.auth());
+const EditProfileContainer = () => {
+  const [userAuth, initialising, error] = useAuthState(firebase.auth());
   const history = useHistory();
   const location = useLocation();
-  let callbackUrl = location.search.replace("?callback=", ""); // queryValues.callback ? queryValues.callback : "/";
 
-  let { sessionId, isInSessionPage } = React.useMemo(() => {
-    let sessionId = undefined;
-    let splits = callbackUrl.split("/");
-    if (splits[1] === "v") {
-      sessionId = splits[2];
-    }
-    sessionId = sessionId.replace("/live", "");
-    return {
-      sessionId: sessionId ? sessionId.toLowerCase() : null,
-      isInSessionPage: sessionId !== undefined,
-    };
-  }, [callbackUrl]);
+  let sessionId = React.useMemo(() => {
+    return location.state && location.state.sessionId
+      ? location.state.sessionId.toLowerCase()
+      : null;
+  }, [location]);
 
-  const redirectUser = () => {
-    history.push(callbackUrl);
-  };
+  const redirectUser = React.useCallback(() => {
+    history.push(
+      location.state && location.state.from
+        ? location.state.from.pathname
+        : routes.HOME()
+    );
+  }, [history, location]);
 
   if (initialising) {
-    return <p>Loading...</p>;
+    return <SplashScreen />;
   }
 
   if (error) {
@@ -39,10 +37,10 @@ export default () => {
   return (
     <Layout maxWidth="sm">
       <div style={{ padding: "48px 24px" }}>
-        {user && (
+        {userAuth && (
           <EditProfileForm
-            user={user}
-            sessionId={isInSessionPage ? sessionId.toLowerCase() : null}
+            userAuth={userAuth}
+            sessionId={sessionId ? sessionId.toLowerCase() : null}
             profileUpdatedCallback={redirectUser}
           />
         )}
@@ -50,3 +48,5 @@ export default () => {
     </Layout>
   );
 };
+// EditProfileContainer.whyDidYouRender = true;
+export default EditProfileContainer;

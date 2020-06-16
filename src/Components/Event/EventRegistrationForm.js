@@ -7,10 +7,13 @@ import firebase from "../../Modules/firebaseApp";
 
 import _ from "lodash";
 import { getUserDb } from "../../Modules/userOperations";
-import moment from "moment";
-import FormControlLabel from "@material-ui/core/FormControlLabel";
-import Checkbox from "@material-ui/core/Checkbox";
-import { registerToEvent, isUserRegisteredToEvent } from "../../Modules/eventsOperations";
+import * as moment from "moment";
+// import FormControlLabel from "@material-ui/core/FormControlLabel";
+// import Checkbox from "@material-ui/core/Checkbox";
+import {
+  registerToEvent,
+  isUserRegisteredToEvent,
+} from "../../Modules/eventsOperations";
 import MUIAddToCalendar from "../MUIAddToCalendar";
 import routes from "../../Config/routes";
 import { convertFromRaw } from "draft-js";
@@ -18,13 +21,14 @@ import { stateToHTML } from "draft-js-export-html";
 import { getUrl } from "../../Modules/environments";
 import SuccessIcon from "@material-ui/icons/CheckCircleOutline";
 import EventShareIcons from "./EventShareIcons";
+import Alert from "@material-ui/lab/Alert";
 
 const useStyles = makeStyles((theme) => ({
   row: {
     flexDirection: "row",
   },
   button: {
-    marginTop: theme.spacing(2),
+    marginTop: theme.spacing(3),
   },
   bottom: {
     textAlign: "center",
@@ -53,7 +57,7 @@ function EventRegistrationForm(props) {
   let { eventBeginDate, eventEndDate, title } = eventSession;
 
   const classes = useStyles();
-  const [user] = useAuthState(firebase.auth());
+  const [userAuth] = useAuthState(firebase.auth());
   // const [userDb, setUserDb] = React.useState(null);
 
   const [registering, setRegistering] = React.useState(false);
@@ -80,11 +84,11 @@ function EventRegistrationForm(props) {
 
   useEffect(() => {
     const fetchUser = async () => {
-      if (!user) {
+      if (!userAuth) {
         return;
       }
       // console.log("--> On use effect...");
-      let userDb = await getUserDb(user.uid);
+      let userDb = await getUserDb(userAuth.uid);
 
       if (userDb) {
         const x = (str) => (str ? str : "");
@@ -92,13 +96,17 @@ function EventRegistrationForm(props) {
         // setUserDb(normedUser);
         let newFormValues = { ...formValues };
         _.forEach(formFields, (properties, fieldName) => {
-          let dbValue = userDb[properties.name] ? x(userDb[properties.name]) : "";
+          let dbValue = userDb[properties.name]
+            ? x(userDb[properties.name])
+            : "";
           newFormValues[properties.name] = dbValue;
         });
         setFormValues(newFormValues);
       }
       if (isRegistered === null) {
-        setIsRegistered(await isUserRegisteredToEvent(eventSession.id, user.uid));
+        setIsRegistered(
+          await isUserRegisteredToEvent(eventSession.id, userAuth.uid)
+        );
       }
     };
     fetchUser();
@@ -107,26 +115,42 @@ function EventRegistrationForm(props) {
 
   const submitEnabled = React.useMemo(
     () =>
-      formValues.checkedTerms &&
+      /* formValues.checkedTerms && */
       _.reduce(
         rsvpProperties.fields,
         (result, properties) => {
-          if (properties.required && formValues[properties.name].trim() === "") {
+          if (
+            properties.required &&
+            formValues[properties.name].trim() === ""
+          ) {
             return false;
           }
           return result;
         },
-        formValues.checkedTerms
+        true
+        // formValues.checkedTerms
       ),
     [formValues, rsvpProperties.fields]
   );
 
   const calendarEvent = React.useMemo(() => {
-    const { id, description, title, eventBeginDate, eventEndDate } = eventSession;
+    const {
+      id,
+      description,
+      title,
+      eventBeginDate,
+      eventEndDate,
+    } = eventSession;
     const sessionUrl = getUrl() + routes.EVENT_SESSION(id);
     let descriptionText = "";
+    let rawDescription = "";
     if (description) {
-      let descriptionContent = convertFromRaw(JSON.parse(description));
+      const parsedDescription = JSON.parse(description);
+      let descriptionContent = convertFromRaw(parsedDescription);
+      rawDescription = parsedDescription.blocks.reduce((acc, item) => {
+        acc += item.text;
+        return acc;
+      }, "");
       // descriptionText = descriptionContent.getPlainText("\n\n");
       descriptionText = stateToHTML(descriptionContent);
     }
@@ -137,6 +161,7 @@ function EventRegistrationForm(props) {
       location: sessionUrl,
       startTime: moment(eventBeginDate.toDate()),
       endTime: moment(eventEndDate.toDate()),
+      rawDescription,
     };
   }, [eventSession]);
 
@@ -147,7 +172,11 @@ function EventRegistrationForm(props) {
 
     setRegistering(true);
     try {
-      await registerToEvent(eventSession, user ? user.uid : null, formValues);
+      await registerToEvent(
+        eventSession,
+        userAuth ? userAuth.uid : null,
+        formValues
+      );
       setRegistrationComplete(true);
     } catch (e) {
       console.error(e);
@@ -162,9 +191,9 @@ function EventRegistrationForm(props) {
 
   const shareText = React.useMemo(
     () =>
-      `Join me in the virtual event ${eventSession.title} at ${moment(eventSession.eventBeginDate.toDate()).format(
-        "lll"
-      )} on @veertly `,
+      `Join me in the virtual event ${eventSession.title} at ${moment(
+        eventSession.eventBeginDate.toDate()
+      ).format("lll")} on @veertly `,
     [eventSession.title, eventSession.eventBeginDate]
   );
 
@@ -194,6 +223,13 @@ function EventRegistrationForm(props) {
             if (properties.visible === false) {
               return null;
             }
+            if (properties.type === "alert") {
+              return (
+                <Alert severity={properties.data.severity}>
+                  {properties.data.text}
+                </Alert>
+              );
+            }
             return (
               <TextField
                 fullWidth
@@ -202,31 +238,52 @@ function EventRegistrationForm(props) {
                 variant="outlined"
                 className={classes.textField}
                 required={properties.required}
-                helperText={properties.helperText ? properties.helperText : null}
+                helperText={
+                  properties.helperText ? properties.helperText : null
+                }
                 key={fieldName}
                 type={properties.type}
                 value={formValues[properties.name]}
-                onChange={(e) => setFormValues({ ...formValues, [properties.name]: e.target.value })}
+                onChange={(e) =>
+                  setFormValues({
+                    ...formValues,
+                    [properties.name]: e.target.value,
+                  })
+                }
               />
             );
           })}
-          <div style={{ textAlign: "left", marginTop: 16 }}>
+          {/* <div style={{ textAlign: "left", marginTop: 16 }}>
             <FormControlLabel
               control={
                 <Checkbox
                   checked={formValues.checkedNewsletter}
-                  onChange={(e) => setFormValues({ ...formValues, checkedNewsletter: e.target.checked })}
+                  onChange={(e) =>
+                    setFormValues({
+                      ...formValues,
+                      checkedNewsletter: e.target.checked,
+                    })
+                  }
                   name="checkedNewsletter"
                   color="primary"
                 />
               }
-              label={<span>Join our monthly newsletter and stay updated on new features</span>}
+              label={
+                <span>
+                  Join our monthly newsletter and stay updated on new features
+                </span>
+              }
             />
             <FormControlLabel
               control={
                 <Checkbox
                   checked={formValues.checkedTerms}
-                  onChange={(e) => setFormValues({ ...formValues, checkedTerms: e.target.checked })}
+                  onChange={(e) =>
+                    setFormValues({
+                      ...formValues,
+                      checkedTerms: e.target.checked,
+                    })
+                  }
                   name="checkedTerms"
                   color="primary"
                 />
@@ -234,17 +291,25 @@ function EventRegistrationForm(props) {
               label={
                 <span>
                   I accept the{" "}
-                  <a href="https://veertly.com" target="_blank" rel="noopener noreferrer">
-                    Terms of Use
+                  <a
+                    href="https://veertly.com/terms-of-service/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Terms of Service
                   </a>{" "}
                   &amp;{" "}
-                  <a href="https://veertly.com" target="_blank" rel="noopener noreferrer">
+                  <a
+                    href="https://veertly.com/privacy-policy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     Privacy Policy
                   </a>
                 </span>
               }
             />
-          </div>
+          </div> */}
           <div className={classes.bottom}>
             <Button
               variant="contained"
@@ -255,6 +320,30 @@ function EventRegistrationForm(props) {
             >
               Confirm Registration
             </Button>
+            <Typography
+              /* variant="caption" */ color="textSecondary"
+              display="block"
+              style={{ marginTop: 24 }}
+            >
+              <span>
+                By proceeding, you accept the{" "}
+                <a
+                  href="https://veertly.com/terms-of-service/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Terms of Service
+                </a>{" "}
+                &amp;{" "}
+                <a
+                  href="https://veertly.com/privacy-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Privacy Policy
+                </a>
+              </span>
+            </Typography>
           </div>
         </form>
       )}
@@ -276,7 +365,10 @@ function EventRegistrationForm(props) {
               <MUIAddToCalendar event={calendarEvent} isPrimaryButton={false} />
             </div>
             <div style={{ width: "100%", textAlign: "center" }}>
-              <EventShareIcons url={getUrl() + routes.EVENT_SESSION(eventSession.id)} shareText={shareText} />
+              <EventShareIcons
+                url={getUrl() + routes.EVENT_SESSION(eventSession.id)}
+                shareText={shareText}
+              />
             </div>
             <div style={{ textAlign: "center", marginTop: 32 }}>
               <Button variant="text" color="primary" onClick={props.onClose}>
