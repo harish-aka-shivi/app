@@ -1,121 +1,173 @@
-import React, { useState, useEffect } from "react";
-import useScript from "../../Hooks/useScript";
+import React, { useEffect } from "react";
 import { makeStyles } from "@material-ui/core/styles";
 import { leaveCall } from "../../Modules/eventSessionOperations";
 
+import { useSelector, shallowEqual } from "react-redux";
+import {
+  getUser,
+  getUserGroup,
+  getSessionId,
+  getUserId,
+  getEventSessionDetails,
+  getFeatureDetails
+} from "../../Redux/eventSession";
+// import JitsiContext from "../../Contexts/JitsiContext";
+import { trackPage, trackEvent } from "../../Modules/analytics";
+import {
+  getJistiServer,
+  // getJitsiOptions,
+  getJistiDomain,
+  isMeetJitsi
+} from "../../Modules/jitsi";
+import { FEATURES } from "../../Modules/features";
+// import { usePrevious } from "react-use";
+// import TechnicalCheckContext from "../../Contexts/TechnicalCheckContext";
+import AudioVideoCheckDialog from "../../Components/EventSession/AudioVideoCheckDialog";
+import JitsiPlayerComponent from "../../Components/EventSession/JitsiPlayerComponent";
+import { Box } from "@material-ui/core";
+// import TechnicalCheckContext from "./TechnicalCheckContext";
 const useStyles = makeStyles((theme) => ({
   root: {
-    width: "100%",
-    height: "100%",
-  },
+    // width: "100%",
+    // height: "100%"
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: 0,
+    left: 0
+  }
 }));
 
-export default (props) => {
+const NetworkingRoomContainer = () => {
   const classes = useStyles();
-  const { currentGroup, user, eventSession, jitsiApi, setJitsiApi } = props;
-  const [loaded, error] = useScript("https://meet.jit.si/external_api.js");
-  const [lastRoomLoaded, setLastRoomLoaded] = useState(null);
+  const userId = useSelector(getUserId);
+  const user = useSelector(getUser);
+  const currentGroup = useSelector(getUserGroup, shallowEqual);
+  const sessionId = useSelector(getSessionId);
+
+  const eventSessionDetails = useSelector(getEventSessionDetails, shallowEqual);
+
+  const removeJitsiLogoFeature = useSelector(
+    getFeatureDetails(FEATURES.REMOVE_JITSI_LOGO),
+    shallowEqual
+  );
+
+  const jitsiServer = (currentGroup && currentGroup.customJitsiServer
+    ? getJistiServer(currentGroup)
+    : getJistiServer(eventSessionDetails)) + "external_api.js";
+
+  // const [loaded, error] = useScript(
+  //   jitsiServer
+  // );
 
   useEffect(() => {
-    window.analytics.page("NetworkingRoom/" + eventSession.id);
-    window.analytics.track("Entered Networking Room", {
-      eventSessionId: eventSession.id,
+    trackPage("NetworkingRoom/" + sessionId);
+    trackEvent("Entered Networking Room", {
+      eventSessionId: sessionId
     });
-  }, [eventSession.id]);
+  }, [sessionId]);
 
   const handleCallEnded = React.useCallback(() => {
-    leaveCall(eventSession, user.uid);
-  }, [eventSession, user.uid]);
+    leaveCall(sessionId, currentGroup, userId);
+  }, [sessionId, currentGroup, userId]);
 
-  useEffect(() => {
-    let prefix = process.env.REACT_APP_JITSI_ROOM_PREFIX;
-    let prefixStr = prefix !== undefined ? `${prefix}-` : "";
 
-    const roomName = prefixStr + currentGroup.videoConferenceAddress.replace("https://meet.jit.si/", "");
-
-    if (loaded && lastRoomLoaded !== roomName) {
-      // dispose existing jitsi
-      if (jitsiApi) {
-        jitsiApi.executeCommand("hangup");
-        jitsiApi.dispose();
-      }
-
-      const domain = "meet.jit.si";
-      const options = {
-        roomName: roomName,
-        parentNode: document.querySelector("#conference-container"),
-        interfaceConfigOverwrite: {
-          // filmStripOnly: true,
-          DEFAULT_REMOTE_DISPLAY_NAME: "Veertlier",
-          // SHOW_JITSI_WATERMARK: false,
-          // SUPPORT_URL: 'https://github.com/jitsi/jitsi-meet/issues/new',
-        },
-      };
-      /*eslint-disable no-undef*/
-      const api = new JitsiMeetExternalAPI(domain, options);
-      /*eslint-enable no-undef*/
-      api.executeCommand("displayName", user.displayName);
-      if (user.photoURL) {
-        api.executeCommand("avatarUrl", user.photoURL);
-      }
-      api.addEventListener("videoConferenceLeft", (event) => {
-        // console.log("videoConferenceLeft: ", event);
-        window.analytics.track("[Jitsi] Left Call (videoConferenceLeft)", {
-          eventSessionId: eventSession.id,
-          roomName,
-        });
-        handleCallEnded();
-      });
-      api.addEventListener("readyToClose", (event) => {
-        // console.log("readyToClose: ", event);
-        window.analytics.track("[Jitsi] Left Call (readyToClose)", {
-          eventSessionId: eventSession.id,
-          roomName,
-        });
-        handleCallEnded();
-      });
-      window.analytics.track("[Jitsi] Joined Call", {
-        eventSessionId: eventSession.id,
-        roomName,
-      });
-      setLastRoomLoaded(roomName);
-      setJitsiApi(api);
-    }
-    return () => {
-      //TODO: correctly handle the leaving of calls
-      // if (jitsiApi) {
-      //   console.log("ON DISPOSE");
-      //   jitsiApi.executeCommand("hangup");
-      //   jitsiApi.dispose();
-      // }
-    };
-  }, [
-    loaded,
-    currentGroup,
-    eventSession.id,
-    handleCallEnded,
-    jitsiApi,
-    lastRoomLoaded,
-    setJitsiApi,
-    user.displayName,
-    user.photoURL,
-  ]);
-
-  if (error) {
-    console.log(error);
-    return <p>Error :(</p>;
+  // Initialize Jitsi Player
+  const domain = currentGroup && currentGroup.customJitsiServer ? getJistiDomain(currentGroup): 
+  getJistiDomain(eventSessionDetails);
+  
+  const showJitsiLogo = isMeetJitsi(domain) && (!removeJitsiLogoFeature || !removeJitsiLogoFeature.enabled);
+  
+  let subject = "";
+  if (currentGroup.isRoom) {
+    subject = `Room | ${currentGroup.roomName}`;
+  } else {
+    subject = "Networking Conversation";
   }
-  if (!loaded) return <div id="conference-container">Loading...</div>;
-  if (loaded) {
-    // return (
-    //   <div className={classes.root}>
-    //     <Typography variant="caption">
-    //       <pre>
-    //         <code>{JSON.stringify(currentGroup, null, 2)}</code>
-    //       </pre>
-    //     </Typography>
-    //   </div>
-    // );
-    return <div id="conference-container" className={classes.root} />;
+
+  let prefix = process.env.REACT_APP_JITSI_ROOM_PREFIX;
+  let prefixStr = prefix !== undefined ? `${prefix}-` : "";
+
+  const roomName = currentGroup.videoConferenceAddress.includes("http")
+  ? prefixStr +
+    currentGroup.videoConferenceAddress.replace("https://meet.jit.si/", "")
+  : prefixStr + currentGroup.videoConferenceAddress;
+
+  const handleVideoConferencingJoined = () => {
+    trackEvent("[Jitsi] Joined Call", {
+      eventSessionId: sessionId,
+      roomName
+    });
   }
+
+  const handleVideoConferencingLeft = () => {
+    trackEvent("[Jitsi] Left Call (videoConferenceLeft)", {
+      eventSessionId: sessionId,
+      roomName
+    });
+    handleCallEnded();
+  }
+
+  const handleCallEndedCb = () => {
+    trackEvent("[Jitsi] Left Call (readyToClose)", {
+      eventSessionId: sessionId,
+      roomName
+    });
+    handleCallEnded();
+  }
+
+  // useJitsi({
+  //   avatarUrl: user.avatarUrl,
+  //   displayName: user.firstName + " " + user.lastName,
+  //   sessionId,
+  //   containerId: "#conference-container",
+  //   domain,
+  //   showJitsiLogo,
+  //   subject,
+  //   roomName,
+  //   onVideoConferenceJoined: handleVideoConferencingJoined,
+  //   onVideoConferenceLeft: handleVideoConferencingLeft,
+  //   callEndedCb: handleCallEndedCb,
+  // });
+
+  // if (error) {
+  //   console.log(error);
+  //   return <p>Error :(</p>;
+  // }
+  // if (!loaded) return <div>Loading...</div>;
+  // if (loaded) {
+  return (
+    <Box height="100%" width="100%" position="relative">
+      <div className={classes.root}
+        // id="conference-container"
+        >
+          <JitsiPlayerComponent 
+            avatarUrl= {user.avatarUrl}
+            displayName={user.firstName + " " + user.lastName}
+            sessionId={sessionId}
+            // containerId="#conference-container"
+            domain={domain}
+            showJitsiLogo={showJitsiLogo}
+            subject={subject}
+            roomName={roomName}
+            onVideoConferenceJoined={handleVideoConferencingJoined}
+            onVideoConferenceLeft={handleVideoConferencingLeft}
+            callEndedCb= {handleCallEndedCb}
+            jitsiServer={jitsiServer}
+          />
+      </div>
+
+      <AudioVideoCheckDialog
+        title={currentGroup.isRoom ? `${currentGroup.roomName}` : "Networking Conference call"}
+        subtitle={"You are going into video call. Please ensure that mic and camera are working properly."}
+        sessionId={sessionId}
+        showClose
+        onCloseClicked={handleCallEnded}
+        okText={currentGroup.isRoom ? "Join room" : " Join call"}
+      />
+    </Box>
+    )
+  // }
 };
+// NetworkingRoomContainer.whyDidYouRender = true;
+export default NetworkingRoomContainer;

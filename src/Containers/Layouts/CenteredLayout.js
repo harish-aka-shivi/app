@@ -6,7 +6,7 @@ import Container from "@material-ui/core/Container";
 
 import CenteredTopbar from "./CenteredTopbar";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles((theme) => ({
   root: {
     paddingTop: 56,
     height: "100%",
@@ -28,8 +28,7 @@ const useStyles = makeStyles(theme => ({
     // bottom: 0
   }
 }));
-
-export default props => {
+const CenteredLayout = (props) => {
   const { children, maxWidth } = props;
 
   let width = maxWidth ? maxWidth : "lg";
@@ -52,3 +51,7 @@ export default props => {
     </div>
   );
 };
+
+// CenteredLayout.whyDidYouRender = true;
+
+export default CenteredLayout;

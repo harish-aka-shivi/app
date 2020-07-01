@@ -1,16 +1,19 @@
 const functions = require("firebase-functions");
-const admin = require("firebase-admin");
-admin.initializeApp();
 
-const firestore = admin.firestore();
+const { firestore, admin } = require("./modules/firebase");
+
+const moment = require("moment");
 
 const sendgrid = require("./modules/sendgrid");
+const slack = require("./modules/slack");
+
+const userRolesFunctions = require("./services/userRoles");
 
 const leaveCall = async (sessionId, myUserId) => {
   var eventSessionRef = firestore.collection("eventSessions").doc(sessionId);
-  var eventSessionSnapshot = await eventSessionRef.get();
+  // var eventSessionSnapshot = await eventSessionRef.get();
 
-  let eventSession = eventSessionSnapshot.data();
+  // let eventSession = eventSessionSnapshot.data();
 
   var participantsJoinedRef = await firestore
     .collection("eventSessions")
@@ -30,15 +33,23 @@ const leaveCall = async (sessionId, myUserId) => {
     return;
   }
 
-  var liveGroupsRef = await firestore.collection("eventSessions").doc(sessionId).collection("liveGroups");
+  var liveGroupsRef = await firestore
+    .collection("eventSessions")
+    .doc(sessionId)
+    .collection("liveGroups");
 
   let liveGroupsSnapshot = await liveGroupsRef.get();
   let liveGroups = {};
+
   await liveGroupsSnapshot.forEach(function (doc) {
     liveGroups[doc.id] = doc.data();
   });
 
-  let myUserRef = firestore.collection(`eventSessions`).doc(sessionId).collection("participantsJoined").doc(myUserId);
+  let myUserRef = firestore
+    .collection("eventSessions")
+    .doc(sessionId)
+    .collection("participantsJoined")
+    .doc(myUserId);
 
   var myGroupRef = eventSessionRef.collection("liveGroups").doc(myGroupId);
 
@@ -48,7 +59,7 @@ const leaveCall = async (sessionId, myUserId) => {
   for (let i = 0; i < participantsKeys.length; i++) {
     let userId = participantsKeys[i];
     participantsRef[userId] = firestore
-      .collection(`eventSessions`)
+      .collection("eventSessions")
       .doc(sessionId)
       .collection("participantsJoined")
       .doc(userId);
@@ -73,7 +84,10 @@ const leaveCall = async (sessionId, myUserId) => {
       }
 
       let myGroup = liveGroupSnapshot.data();
-      if (myGroup.participants[myUserId] === null || myGroup.participants[myUserId].leftTimestamp !== null) {
+      if (
+        myGroup.participants[myUserId] === null ||
+        myGroup.participants[myUserId].leftTimestamp !== null
+      ) {
         console.log("Oops, user is no longer part of this conversation");
       }
 
@@ -90,7 +104,7 @@ const leaveCall = async (sessionId, myUserId) => {
         if (value.leftTimestamp === null) {
           activeParticipants.push({
             userId,
-            ...value,
+            ...value
           });
         }
       }
@@ -100,18 +114,24 @@ const leaveCall = async (sessionId, myUserId) => {
 
       //4. set leftTimestamp on my participant of the live group
       let updateObj = {};
-      updateObj[`participants.${myUserId}.leftTimestamp`] = admin.firestore.FieldValue.serverTimestamp();
+      updateObj[
+        `participants.${myUserId}.leftTimestamp`
+      ] = admin.firestore.FieldValue.serverTimestamp();
       transaction.update(myGroupRef, updateObj);
 
       //5. check if only one participant remaining
-      if (activeParticipants.length === 1) {
+      if (!myGroup.isRoom && activeParticipants.length === 1) {
         //5.1 set the remaining participant group to null
         let participant = activeParticipants[0];
-        transaction.update(participantsRef[participant.userId], { groupId: null });
+        transaction.update(participantsRef[participant.userId], {
+          groupId: null
+        });
 
         //5.2 set the leftTimestamp on the remaining participant
         updateObj = {};
-        updateObj[`participants.${participant.userId}.leftTimestamp`] = admin.firestore.FieldValue.serverTimestamp();
+        updateObj[
+          `participants.${participant.userId}.leftTimestamp`
+        ] = admin.firestore.FieldValue.serverTimestamp();
         transaction.update(myGroupRef, updateObj);
       }
 
@@ -156,8 +176,12 @@ exports.onUserStatusChanged = functions.database
 
     // Otherwise, we convert the last_changed field to a Date
     eventStatus.lastChanged = new Date(eventStatus.lastChanged);
-    eventStatus.leftTimestamp = eventStatus.leftTimestamp ? new Date(eventStatus.leftTimestamp) : null;
-    eventStatus.joinedTimestamp = eventStatus.joinedTimestamp ? new Date(eventStatus.joinedTimestamp) : null;
+    eventStatus.leftTimestamp = eventStatus.leftTimestamp
+      ? new Date(eventStatus.leftTimestamp)
+      : null;
+    eventStatus.joinedTimestamp = eventStatus.joinedTimestamp
+      ? new Date(eventStatus.joinedTimestamp)
+      : null;
 
     if (!eventStatus.leftTimestamp) {
       console.log("----------> User OFFLINE");
@@ -165,38 +189,180 @@ exports.onUserStatusChanged = functions.database
     }
 
     // ... and write it to Firestore.
-    return userStatusFirestoreRef.update(eventStatus);
+    let result = await userStatusFirestoreRef.update(eventStatus);
+
+    if (
+      eventStatus.joinedTimestamp &&
+      !eventStatus.leftTimestamp &&
+      sessionId === "demo"
+    ) {
+      var userRef = await firestore.collection("users").doc(userId);
+      let userSnap = await userRef.get();
+      let user = userSnap.data();
+
+      await slack.newPersonOnDemo(user);
+    }
+
+    return result;
   });
 
 exports.onEventCreated = functions.firestore
   .document("eventSessionsDetails/{sessionId}")
   .onCreate(async (snap, context) => {
-    const { owner, title } = snap.data();
+    const eventDetails = snap.data();
+    const { owner, title } = eventDetails;
+
     let { sessionId } = context.params;
 
-    let baseUrl = functions.config().global.base_url;
+    const config = functions.config();
+    let baseUrl = config.global ? config.global.base_url : "";
 
     var ownerRef = await firestore.collection("users").doc(owner);
 
     let ownerSnapshot = await ownerRef.get();
     let ownerData = ownerSnapshot.data();
     let eventLink = baseUrl + "/v/" + sessionId;
-    await sendgrid.sendEventCreatedMail(ownerData.email, ownerData.firstName, eventLink, title);
+    await sendgrid.sendEventCreatedMail(
+      ownerData.email,
+      ownerData.firstName,
+      eventLink,
+      title
+    );
+
+    await slack.newEventNotification(eventDetails);
   });
 
 exports.onUserRegisteredEvent = functions.firestore
   .document("eventSessionsRegistrations/{sessionId}/registrations/{ts}")
   .onCreate(async (snap, context) => {
-    const { firstName, email, title } = snap.data();
+    const { firstName, email, title, eventBeginDate } = snap.data();
     let { sessionId } = context.params;
 
-    let baseUrl = functions.config().global.base_url;
+    var featureRef = await firestore
+      .collection("eventSessionsEnabledFeatures")
+      .doc(sessionId);
 
-    let eventLink = baseUrl + "/v/" + sessionId;
+    let feature = (await featureRef.get()).data();
+    if (feature.rsvp) {
+      let { registrationEmailTemplateId } = feature.rsvp;
 
-    if (email && email.trim() !== "") {
-      await sendgrid.sendUserRegistered(email, firstName, eventLink, title);
-    } else {
-      await sendgrid.sendUserRegistered("info@veertly.com", "GUEST-" + firstName, eventLink, title);
+      let baseUrl = functions.config().global.base_url;
+      let eventLink = baseUrl + "/v/" + sessionId;
+
+      let eventDate = moment(eventBeginDate.toDate()).format(
+        "Do MMMM YYYY HH:mm"
+      ); //TODO: make it in the format of the user's locale
+
+      if (email && email.trim() !== "") {
+        await sendgrid.sendUserRegistered(
+          email,
+          firstName,
+          eventLink,
+          title,
+          eventDate,
+          registrationEmailTemplateId
+        );
+      } else {
+        await sendgrid.sendUserRegistered(
+          "info@veertly.com",
+          "GUEST-" + firstName,
+          eventLink,
+          title,
+          eventDate,
+          registrationEmailTemplateId
+        );
+      }
     }
   });
+
+// This is a callable function. We can directly call it from app.
+// It will check the eventSessionsPrivateDetails and verify the password
+// If password matches => set loggedIn to true in userSession Object.
+exports.loginInEvent = functions.https.onCall(async (data, context) => {
+  const { password, eventSessionId } = data;
+  const { uid } = context.auth;
+  // console.log(`password=${password}, eventSessionId=${eventSessionId}, uid=${uid}`)
+  const eventSessionPrivateRef = firestore
+    .collection("eventSessionsPrivateDetails")
+    .doc(eventSessionId);
+  const eventSessionDataDoc = await eventSessionPrivateRef.get();
+
+  const passwordEvent = eventSessionDataDoc.exists
+    ? eventSessionDataDoc.data().password
+    : "";
+  // console.log("password in db", passwordEvent);
+  if (passwordEvent && password === passwordEvent) {
+    // set logged in parameter to event session object
+    const userRef = firestore
+      .collection("eventSessions")
+      .doc(eventSessionId)
+      .collection("participantsJoined")
+      .doc(uid);
+    userRef.set(
+      {
+        isAuthenticated: true
+      },
+      { merge: true }
+    );
+    return {
+      success: true
+    };
+  } else {
+    return {
+      success: false
+    };
+  }
+});
+
+// exports.createBroadcastMessage = functions.https.onCall(async (data, context) => {
+//   const {
+//     sessionId,
+//     userId,
+//     message,
+//     state,
+//     namespace,
+//   } = data;
+
+//   const broadcastMessageId = String(new Date().getTime());
+
+//   const broadcastMessageToBeSaved = {
+//     id: broadcastMessageId,
+//     owner: userId,
+//     creationDate: admin.firestore.FieldValue.serverTimestamp(),
+//     message,
+//     state,
+//   };
+
+//   try {
+//     await firestore
+//       .collection("eventSessions")
+//       .doc(sessionId.toLowerCase())
+//       .collection("broadcasts")
+//       .doc(namespace)
+//       .collection("broadcastsMessages")
+//       .doc(broadcastMessageId)
+//       .set(broadcastMessageToBeSaved);
+
+//     setTimeout(() => {
+//       // set it to published now
+//       const broadcastRef = firestore
+//         .collection("eventSessions")
+//         .doc(sessionId.toLowerCase())
+//         .collection("broadcasts")
+//         .doc(namespace)
+//         .collection("broadcastsMessages")
+//         .doc(`${broadcastMessageId}`);
+
+//       broadcastRef.update({
+//         state: "published"
+//       });
+//     }, 40000)
+//   } catch (error) {
+//     console.log(error);
+//   }
+// });
+exports.setUserRole = functions.https.onCall(userRolesFunctions.setUserRole);
+
+exports.unsetUserRole = functions.https.onCall(
+  userRolesFunctions.unsetUserRole
+);

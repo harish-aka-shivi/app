@@ -1,84 +1,101 @@
-import React, { useEffect, useState } from "react";
-// import Layout from "../Layouts/EventSessionLayout";
-import NetworkingRoomContainer from "./NetworkingRoomContainer";
-import { useCollectionData, useDocumentData } from "react-firebase-hooks/firestore";
-import firebase from "../../Modules/firebaseApp";
-import { withRouter } from "react-router-dom";
-import { setAsAvailable, leaveCall, updateInNetworkingRoom } from "../../Modules/eventSessionOperations";
-import { useAuthState } from "react-firebase-hooks/auth";
+import React, { useEffect, useMemo } from "react";
+import { useParams, useHistory } from "react-router-dom";
 import Typography from "@material-ui/core/Typography";
-import { useBeforeunload } from "react-beforeunload";
 import clsx from "clsx";
-
-import { makeStyles /* useTheme */ } from "@material-ui/styles";
-// import { useMediaQuery } from "@material-ui/core";
-import NetworkingSidebar from "./NetworkingSidebar";
-import EventSessionTopbar from "../../Components/EventSession/EventSessionTopbar";
-import ConferenceRoomContainer from "./ConferenceRoomContainer";
-import ConferenceSidebar from "./ConferenceSidebar";
+import { makeStyles } from "@material-ui/styles";
 import moment from "moment";
 import Button from "@material-ui/core/Button";
-import Page from "../../Components/Core/Page";
 import useMediaQuery from "@material-ui/core/useMediaQuery";
 import { useTheme } from "@material-ui/core/styles";
-import { useHistory } from "react-router-dom";
-import routes from "../../Config/routes";
-import { initFirebasePresenceSync } from "../../Modules/userOperations";
-import Announcements from "../../Components/EventSession/Announcements";
-import { DEFAULT_EVENT_OPEN_MINUTES } from "../../Config/constants";
-import SideMenuIcons from "../../Components/EventSession/SideMenuIcons";
-import ChatPane, { CHAT_DEFAULT_WIDTH } from "../../Components/Chat/ChatPane";
-import EditProfileDialog from "../../Components/EditProfile/EditProfileDialog";
-import EventPageDialog from "../../Components/Event/EventPageDialog";
-import { useSelector } from "react-redux";
-import { isChatOpen } from "../../Redux/selectors";
+import { useSelector, shallowEqual } from "react-redux";
+import NetworkingRoomContainer from "./NetworkingRoomContainer";
+import PoweredByVeertly from "../../Assets/powered_by_veertly.svg";
 
-export const SIDE_PANE_WIDTH = 53;
+import EventSessionTopbar from "../../Components/EventSession/EventSessionTopbar";
+import ConferenceRoomContainer from "./ConferenceRoomContainer";
+import Page from "../../Components/Core/Page";
+import routes from "../../Config/routes";
+import {
+  DEFAULT_EVENT_OPEN_MINUTES,
+  DEFAULT_EVENT_CLOSES_MINUTES
+} from "../../Config/constants";
+import EditProfileDialog from "../../Components/EditProfile/EditProfileDialog";
+import FeedbackDialog from "../../Components/EventSession/FeedbackDialog";
+import RoomArchivedDialog from "../../Components/EventSession/Rooms/RoomArchivedDialog";
+import {
+  getEventSessionDetails,
+  getUserGroup,
+  getUserCurrentLocation
+} from "../../Redux/eventSession";
+import JoinParticipantDialog from "../../Components/EventSession/JoinParticipantDialog";
+import SmallPlayerContainer from "./SmallPlayerContainer";
+import {
+  SMALL_PLAYER_INITIAL_HEIGHT,
+  SMALL_PLAYER_INITIAL_WIDTH
+} from "../../Utils";
+import JoinRoomDialog from "../../Components/EventSession/JoinRoomDialog";
+import CreateRoomDialog from "../../Components/EventSession/CreateRoomDialog";
+import VerticalNavBar from "../../Components/EventSession/VerticalNavBar";
+import VerticalNavBarContext from "../../Contexts/VerticalNavBarContext";
+import { VERTICAL_NAV_OPTIONS } from "../../Contexts/VerticalNavBarContext";
+import VerticalNavPane from "../../Components/EventSession/VerticalNavPane";
+import { Box } from "@material-ui/core";
+import { LobbyContainer } from "./LobbyContainer";
+import BackstageContainer from "./BackstageContainer";
+// import CurrentCallActionsVertical from "../../Components/EventSession/CurrentCallActionsVertical";
+
+export const SIDE_PANE_WIDTH = 0;
+export const VERTICAL_NAV_WIDTH = 85;
+
 const LEFT_PANE_WIDTH = 300;
+const TOP_BAR_MOBILE = 56;
+const TOP_BAR_NORMAL = 64;
 
 const useStyles = makeStyles((theme) => ({
   root: {
-    paddingTop: 56,
+    paddingTop: TOP_BAR_MOBILE,
     height: "100%",
     [theme.breakpoints.up("sm")]: {
-      paddingTop: 64,
+      paddingTop: TOP_BAR_NORMAL
     },
     position: "relative",
+    overflow: "hidden"
   },
   shiftContent: {
-    paddingLeft: LEFT_PANE_WIDTH,
+    paddingLeft: VERTICAL_NAV_WIDTH + LEFT_PANE_WIDTH
   },
 
-  mainPane: {
+  mainPane: ({ hasNavBarPaneOpen }) => ({
     position: "absolute",
     // height: "100%",
-    top: 64,
+    top: TOP_BAR_NORMAL,
     bottom: 0,
-    left: LEFT_PANE_WIDTH,
+    left: VERTICAL_NAV_WIDTH + (hasNavBarPaneOpen ? LEFT_PANE_WIDTH : 0),
     right: SIDE_PANE_WIDTH,
     backgroundColor: theme.palette.background.default,
     backgroundImage: "url('/Illustrations/EmptyNetworkingPane.svg')",
     backgroundRepeat: "no-repeat",
-    backgroundSize: "50%",
-    backgroundPosition: "bottom right",
+    backgroundSize: "20%",
+    backgroundPosition: "98% 100%",
     [theme.breakpoints.down("xs")]: {
       right: 0,
       left: 0,
-      top: 56,
-    },
-  },
+      top: TOP_BAR_MOBILE,
+      backgroundSize: "50%"
+    }
+  }),
   noCall: {
     width: "100%",
     textAlign: "center",
     position: "absolute",
     // paddingLeft: "20%",
-    top: "45%",
+    top: "45%"
   },
   blueText: {
-    color: "#274760",
+    color: "#274760"
   },
   greenText: {
-    color: "#37C470",
+    color: "#37C470"
   },
   emptyMessage: {
     // fontWeight: 500,
@@ -87,216 +104,142 @@ const useStyles = makeStyles((theme) => ({
     textAlign: "left",
     maxWidth: "100%",
     [theme.breakpoints.down("xs")]: {
-      margin: theme.spacing(0, 1),
-    },
+      margin: theme.spacing(0, 1)
+    }
   },
   sideMenu: {
     width: SIDE_PANE_WIDTH,
-    top: 64,
+    top: TOP_BAR_NORMAL,
     backgroundColor: "white",
     position: "absolute",
     right: 0,
     bottom: 0,
     borderLeft: "1px solid rgba(0, 0, 0, 0.12)",
     [theme.breakpoints.down("xs")]: {
-      display: "none",
-    },
+      display: "none"
+    }
   },
+  verticalNav: {
+    width: VERTICAL_NAV_WIDTH,
+    top: TOP_BAR_NORMAL,
+    backgroundColor: "white",
+    position: "absolute",
+    left: 0,
+    bottom: 0,
+    borderRight: "1px solid rgba(0, 0, 0, 0.12)",
+    [theme.breakpoints.down("xs")]: {
+      display: "none"
+    }
+  },
+  smallPlayerContainer: {
+    position: "absolute",
+    bottom: 0,
+    // left: 0,
+    right: SIDE_PANE_WIDTH,
+    zIndex: 1201,
+    height: SMALL_PLAYER_INITIAL_HEIGHT,
+    width: SMALL_PLAYER_INITIAL_WIDTH,
+    padding: theme.spacing(1)
+    // borderTop: "1px solid rgba(0, 0, 0, 0.12)",
+  },
+
+  navBarPane: ({ hasNavBarPaneOpen }) => ({
+    position: "absolute",
+    left: VERTICAL_NAV_WIDTH,
+    backgroundColor: "#fff",
+    bottom: 0,
+    top: TOP_BAR_NORMAL,
+    width: LEFT_PANE_WIDTH,
+    borderRight: "1px solid rgba(0, 0, 0, 0.12)"
+  }),
+  mainPaneScroll: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    top: 0,
+    overflow: "auto",
+    padding: theme.spacing(2, 2),
+    [theme.breakpoints.up("sm")]: {
+      padding: theme.spacing(4, 2)
+    }
+  },
+  callActionsContainer: {
+    position: "absolute",
+    top: 80,
+    left: 0,
+    bottom: 80,
+    display: "flex",
+    alignItems: "center",
+    // width: 300,
+    // backgroundColor: theme.palette.background.default,
+    // padding: theme.spacing(1, 0),
+    borderRadius: "0 16px 0 0"
+  },
+  poweredByVeertly: {
+    position: "absolute",
+    bottom: 8,
+    left: 8,
+    width: 120,
+    cursor: "pointer"
+  }
 }));
 
-export default withRouter((props) => {
-  const [user /* , initialising, error */] = useAuthState(firebase.auth());
-
-  const [initCompleted, setInitCompleted] = useState(false);
-  const [currentGroupId, setCurrentGroupId] = useState(null);
-  const [currentGroup, setCurrentGroup] = useState(null);
-  const [jitsiApi, setJitsiApi] = useState(null);
-  // const [liveAt, setLiveAt] = useState(null);
-  const [lastEventSessionJson, setLastEventSessionJson] = useState("");
-  const [lastEventSessionDetailsJson, setLastEventSessionDetailsJson] = useState("");
-  const [lastParticipantJoinedJson, setLastParticipantJoinedJson] = useState("");
-  const [lastParticipantDetailsJson, setLastParticipantDetailsJson] = useState("");
-  const [lastLiveGroupsJson, setLastLiveGroupsJson] = useState("");
-  const [composedEventSession, setComposedEventSession] = useState(null);
-  const userId = user ? user.uid : null;
-
-  let [isInConferenceRoom, setIsInConferenceRoom] = useState(false);
-
-  let originalSessionId = props.match.params.sessionId;
-
-  let sessionId = originalSessionId ? originalSessionId.toLowerCase() : null;
-
-  const classes = useStyles();
+const EventSessionContainer = React.memo(() => {
   const theme = useTheme();
   const isDesktop = !useMediaQuery(theme.breakpoints.down("xs"));
 
-  const [openSidebar, setOpenSidebar] = useState(false);
+  // const [openSidebar, setOpenSidebar] = useState(false);
   const history = useHistory();
 
-  let [chatWidth, setChatWidth] = useState(CHAT_DEFAULT_WIDTH);
+  const { hasNavBarPaneOpen } = React.useContext(VerticalNavBarContext);
+  // const { jitsiApi, setJitsiApi } = React.useContext(JitsiContext);
 
-  const chatOpen = useSelector(isChatOpen);
+  const classes = useStyles({ hasNavBarPaneOpen });
 
-  const handleSidebarClose = () => {
-    setOpenSidebar(false);
-  };
+  const { sessionId: originalSessionId } = useParams();
 
-  const shouldOpenSidebar = isDesktop ? true : openSidebar;
-  useBeforeunload((e) => {
-    // setAsOffline(composedEventSession, userId);
-  });
-
-  const [eventSession, loadingSession, errorSession] = useDocumentData(
-    firebase.firestore().collection("eventSessions").doc(sessionId)
-  );
-  const [eventSessionDetails, loadingSessionDetails, errorSessionDetails] = useDocumentData(
-    firebase.firestore().collection("eventSessionsDetails").doc(sessionId)
-  );
-  const [
-    participantsJoined,
-    loadingParticipantsJoined,
-    errorParticipantsJoined,
-  ] = useCollectionData(
-    firebase.firestore().collection("eventSessions").doc(sessionId).collection("participantsJoined"),
-    { idField: "id" }
-  );
-  const [liveGroups, loadingLiveGroups, errorLiveGroups] = useCollectionData(
-    firebase.firestore().collection("eventSessions").doc(sessionId).collection("liveGroups"),
-    { idField: "idField" }
+  const sessionId = useMemo(
+    () => (originalSessionId ? originalSessionId.toLowerCase() : null),
+    [originalSessionId]
   );
 
-  const [usersFirebase, loadingUsers, errorUsers] = useCollectionData(
-    firebase.firestore().collection("eventSessions").doc(sessionId).collection("participantsDetails")
-  );
+  const eventSessionDetails = useSelector(getEventSessionDetails, shallowEqual);
 
-  useEffect(() => {
-    const currentEventSessionJson = JSON.stringify(eventSession);
-    const currentEventSessionDetailsJson = JSON.stringify(eventSessionDetails);
-    const currentParticipantsJoinedJson = JSON.stringify(participantsJoined);
-    const currentLiveGroupsJson = JSON.stringify(liveGroups);
-    const currentParticipantsDetailsJson = JSON.stringify(usersFirebase);
-
-    if (
-      currentEventSessionJson !== lastEventSessionJson ||
-      currentEventSessionDetailsJson !== lastEventSessionDetailsJson ||
-      currentParticipantsJoinedJson !== lastParticipantJoinedJson ||
-      currentParticipantsDetailsJson !== lastParticipantDetailsJson ||
-      currentLiveGroupsJson !== lastLiveGroupsJson
-    ) {
-      // console.lo({ participantsJoined });
-      // console.lo({ liveGroups });
-
-      // check if I am the last one in a group
-      // remove from the group
-      // If not in a group:
-      // check if I have been invited to a conversation
-      // if so, choose one of the invites and join it. Reject all the other ones
-
-      const participantsJoinedMap = participantsJoined
-        ? participantsJoined.reduce((result, participantJoinedObj) => {
-            let id = participantJoinedObj.id;
-            result[id] = participantJoinedObj;
-            return result;
-          }, {})
-        : {};
-
-      const liveGroupsMap = liveGroups
-        ? liveGroups.reduce((result, group) => {
-            let id = group.idField;
-            result[id] = group;
-            return result;
-          }, {})
-        : {};
-
-      if (eventSession && eventSessionDetails && usersFirebase) {
-        let tempComposedEventSession = {
-          ...eventSession,
-          ...eventSessionDetails,
-          participantsJoined: participantsJoinedMap,
-          liveGroups: liveGroupsMap,
-        };
-        setComposedEventSession(tempComposedEventSession);
-        if (!initCompleted && liveGroups && participantsJoined) {
-          if (!usersFirebase.find((item) => item.id === userId)) {
-            history.push(routes.EDIT_PROFILE(routes.EVENT_SESSION_LIVE(sessionId)));
-          }
-          // console.lo({ eventSession });
-          // console.lo("ON effect to set as available...");
-          setAsAvailable(tempComposedEventSession, userId);
-          initFirebasePresenceSync(tempComposedEventSession.id, userId);
-          setInitCompleted(true);
-        }
-      }
-      if (eventSession && eventSessionDetails && participantsJoined && liveGroups) {
-        // console.lo("....WILL UPDATE EVENT SESSION.....");
-        let userEventSession = participantsJoinedMap[userId];
-        //console.log({ userEventSession });
-        if (userEventSession) {
-          let { groupId } = userEventSession;
-          setIsInConferenceRoom(!userEventSession.inNetworkingRoom);
-
-          if (!groupId && currentGroupId) {
-            setCurrentGroup(null);
-            setCurrentGroupId(null);
-          } else {
-            let group = liveGroupsMap[groupId];
-
-            // has the group changed?
-            if (JSON.stringify(currentGroup) !== JSON.stringify(group)) {
-              let group = liveGroupsMap[groupId];
-              // if (!group) {
-              //   console.log("Was not able to find the group with the id " + groupId);
-              // }
-
-              // console.log("Group is different, will update it...");
-              // console.log({ currentGroup, group });
-              setCurrentGroup(group);
-              setCurrentGroupId(groupId);
-              // setLiveAt(eventSession.liveAt);
-            }
-          }
-        }
-      }
-
-      setLastEventSessionJson(currentEventSessionJson);
-      setLastEventSessionDetailsJson(currentEventSessionDetailsJson);
-      setLastLiveGroupsJson(currentLiveGroupsJson);
-      setLastParticipantJoinedJson(currentParticipantsJoinedJson);
-      setLastParticipantDetailsJson(currentParticipantsDetailsJson);
-    }
-  }, [
-    eventSession,
-    eventSessionDetails,
-    participantsJoined,
-    liveGroups,
-    currentGroup,
-    currentGroupId,
-    history,
-    initCompleted,
-    lastEventSessionDetailsJson,
-    lastEventSessionJson,
-    lastLiveGroupsJson,
-    lastParticipantDetailsJson,
-    lastParticipantJoinedJson,
-    sessionId,
-    userId,
-    usersFirebase,
-  ]);
-
-  const handleCreateConference = async () => {
-    history.push(routes.CREATE_EVENT_SESSION());
-  };
+  const userGroup = useSelector(getUserGroup, shallowEqual);
 
   const isLive = React.useMemo(() => {
-    if (!composedEventSession || !composedEventSession.eventBeginDate || !composedEventSession.eventOpens) {
+    if (
+      !eventSessionDetails ||
+      !eventSessionDetails.eventBeginDate ||
+      !eventSessionDetails.eventOpens ||
+      !eventSessionDetails.eventEndDate ||
+      !eventSessionDetails.eventCloses
+    ) {
       return true;
     }
-    const { eventBeginDate, eventOpens } = composedEventSession;
-    let openMinutes = eventOpens ? Number(eventOpens) : DEFAULT_EVENT_OPEN_MINUTES;
-    let beginDate = moment(eventBeginDate.toDate());
+    const {
+      eventBeginDate,
+      eventOpens,
+      eventEndDate,
+      eventCloses
+    } = eventSessionDetails;
 
-    return beginDate.subtract(openMinutes, "minutes").isBefore(moment());
-  }, [composedEventSession]);
+    const openMinutes = eventOpens
+      ? Number(eventOpens)
+      : DEFAULT_EVENT_OPEN_MINUTES;
+    const beginDate = moment(eventBeginDate.toDate());
+
+    let closeMinutes = eventCloses
+      ? Number(eventCloses)
+      : DEFAULT_EVENT_CLOSES_MINUTES;
+    let endDate = moment(eventEndDate.toDate());
+
+    return (
+      beginDate.subtract(openMinutes, "minutes").isBefore(moment()) &&
+      endDate.add(closeMinutes, "minutes").isAfter(moment())
+    );
+  }, [eventSessionDetails]);
 
   useEffect(() => {
     if (!isLive) {
@@ -304,74 +247,22 @@ export default withRouter((props) => {
     }
   }, [isLive, history, sessionId]);
 
-  const users = React.useMemo(() => {
-    if (!usersFirebase) {
-      return {};
-    }
-    return usersFirebase.reduce((result, user) => {
-      result[user.id] = user;
-      return result;
-    }, {});
-  }, [usersFirebase]);
+  const userCurrentLocation = useSelector(getUserCurrentLocation);
 
-  const myUser = React.useMemo(() => {
-    return users[userId];
-  }, [users, userId]);
+  const smallPlayerBounds = React.useMemo(() => `.${classes.root}`, [
+    classes.root
+  ]);
 
-  if (loadingUsers || loadingSession || loadingSessionDetails || loadingParticipantsJoined || loadingLiveGroups) {
-    return <p>Loading...</p>;
-  }
-  if (errorUsers || errorSession || errorSessionDetails || errorParticipantsJoined || errorLiveGroups) {
-    console.error(errorUsers);
-    console.error(errorSession);
-    console.error(errorSessionDetails);
-    console.error(errorParticipantsJoined);
-    console.error(errorLiveGroups);
-    return <p>Error :(</p>;
-  }
-  // console.log(users);
-  // console.log(composedEventSession);
-  // console.log(participantsJoined);
-  // console.log(liveGroups);
-
-  const handleSetIsInConferenceRoom = (openConference) => {
-    if (openConference) {
-      if (currentGroupId) {
-        leaveCall(composedEventSession, userId);
-        if (jitsiApi) {
-          jitsiApi.executeCommand("hangup");
-          jitsiApi.dispose();
-        }
-      }
-      setIsInConferenceRoom(true);
-      updateInNetworkingRoom(composedEventSession, userId, false);
-    } else {
-      if (jitsiApi) {
-        jitsiApi.executeCommand("hangup");
-        jitsiApi.dispose();
-      }
-      setIsInConferenceRoom(false);
-      updateInNetworkingRoom(composedEventSession, userId, true);
-    }
-  };
-
-  if (!composedEventSession) {
+  if (!eventSessionDetails) {
     return (
-      <Page title={`Veertly | Event not found`}>
+      <Page title="Veertly | Event not found">
         <div
           className={clsx({
             [classes.root]: true,
-            [classes.shiftContent]: false,
+            [classes.shiftContent]: false
           })}
         >
-          <EventSessionTopbar
-            isInConferenceRoom={isInConferenceRoom}
-            setIsInConferenceRoom={handleSetIsInConferenceRoom}
-            isInNetworkingCall={currentGroupId !== null}
-            isNetworkingAvailable={false}
-            eventSession={eventSession}
-            myUser={myUser}
-          />
+          <EventSessionTopbar />
           <div>
             <br />
             <br />
@@ -379,12 +270,23 @@ export default withRouter((props) => {
             <br />
             <br />
             <br />
-            <Typography align="center" variant="overline" style={{ display: "block" }}>
+            <Typography
+              align="center"
+              variant="overline"
+              style={{ display: "block" }}
+            >
               Event not found!
             </Typography>
             {/* {user && !user.isAnonymous && ( */}
             <div style={{ width: "100%", textAlign: "center", marginTop: 16 }}>
-              <Button variant="contained" color="primary" className={classes.button} onClick={handleCreateConference}>
+              <Button
+                variant="contained"
+                color="primary"
+                className={classes.button}
+                onClick={() => {
+                  history.push(routes.CREATE_EVENT_SESSION());
+                }}
+              >
                 Create Event
               </Button>
             </div>
@@ -398,98 +300,95 @@ export default withRouter((props) => {
     <div
       className={clsx({
         [classes.root]: true,
-        [classes.shiftContent]: isDesktop,
+        [classes.shiftContent]: isDesktop
       })}
     >
-      <Page title={`Veertly | ${composedEventSession.title}`}> </Page>
-      <EditProfileDialog user={user} eventSession={composedEventSession} />
-      <EventPageDialog eventSession={composedEventSession} />
+      <Page title={`Veertly | ${eventSessionDetails.title}`}> </Page>
+      <EditProfileDialog />
+      {/* <ShareEventDialog /> */}
+      <FeedbackDialog />
+      <JoinParticipantDialog />
+      <JoinRoomDialog />
+      <CreateRoomDialog />
+      <RoomArchivedDialog />
 
-      <EventSessionTopbar
-        isInConferenceRoom={isInConferenceRoom}
-        setIsInConferenceRoom={handleSetIsInConferenceRoom}
-        isInNetworkingCall={currentGroupId !== null}
-        isNetworkingAvailable={composedEventSession.isNetworkingAvailable}
-        eventSession={composedEventSession}
-        myUser={myUser}
-      />
+      <EventSessionTopbar />
+
       {isLive && (
-        <React.Fragment>
-          {/* NETWORKING PANE */}
-          {!isInConferenceRoom && (
-            <React.Fragment>
-              <NetworkingSidebar
-                onClose={handleSidebarClose}
-                open={shouldOpenSidebar}
-                variant={isDesktop ? "persistent" : "temporary"}
-                users={users}
-                eventSession={composedEventSession}
-                currentGroup={currentGroup}
-                user={user}
-              />
-              <div className={classes.mainPane} style={chatOpen ? { right: SIDE_PANE_WIDTH + chatWidth } : null}>
-                {!currentGroup && (
-                  <div className={classes.noCall}>
-                    <Typography variant="h6" className={clsx(classes.blueText, classes.emptyMessage)}>
-                      You are not in any <span className={classes.greenText}>conversation</span> yet,
-                      <br />
-                      don't be shy and <span className={classes.greenText}>select someone</span> to{" "}
-                      <span className={classes.greenText}>talk</span> to!
-                    </Typography>
-                  </div>
-                )}
-                {currentGroup && (
-                  <NetworkingRoomContainer
-                    currentGroup={currentGroup}
-                    user={user}
-                    eventSession={composedEventSession}
-                    jitsiApi={jitsiApi}
-                    setJitsiApi={setJitsiApi}
-                  />
-                )}
-              </div>
-            </React.Fragment>
-          )}
-          {/* CONFERENCE PANE */}
-          {isInConferenceRoom && (
-            <React.Fragment>
-              <ConferenceSidebar
-                onClose={handleSidebarClose}
-                open={shouldOpenSidebar}
-                variant={isDesktop ? "persistent" : "temporary"}
-                users={users}
-                eventSession={composedEventSession}
-                // participantsJoined={participantsJoined}
-                // liveGroups={liveGroups}
-                user={user}
-              />
-
-              <div className={classes.mainPane} style={chatOpen ? { right: SIDE_PANE_WIDTH + chatWidth } : null}>
-                <Announcements eventSession={composedEventSession} />
-                <ConferenceRoomContainer
-                  user={user}
-                  eventSession={composedEventSession}
-                  // participantsJoined={participantsJoined}
-                  // liveGroups={liveGroups}
-                  jitsiApi={jitsiApi}
-                  setJitsiApi={setJitsiApi}
-                />
-              </div>
-            </React.Fragment>
-          )}
-          <div className={classes.sideMenu}>
-            <SideMenuIcons eventSession={composedEventSession} user={user} />
+        <>
+          <div className={classes.verticalNav}>
+            <VerticalNavBar />
           </div>
-          {/* <div
-            className={clsx(classes.chatPane, {
-              [classes.hide]: !chatOpen,
-            })}
-          >
-            {`chat open: ${chatOpen ? "true" : "false"}`} */}
-          <ChatPane eventSession={composedEventSession} users={users} user={user} onResize={(w) => setChatWidth(w)} />
-          {/* </div> */}
-        </React.Fragment>
+          {hasNavBarPaneOpen && (
+            <div className={classes.navBarPane}>
+              <VerticalNavPane />
+            </div>
+          )}
+          <div className={classes.mainPane}>
+            {userCurrentLocation === VERTICAL_NAV_OPTIONS.lobby && (
+              <Box className={classes.mainPaneScroll}>
+                <LobbyContainer />
+              </Box>
+            )}
+
+            {userCurrentLocation === VERTICAL_NAV_OPTIONS.mainStage && (  
+                <ConferenceRoomContainer />
+            )}
+            {userCurrentLocation === VERTICAL_NAV_OPTIONS.backstage && (
+              <BackstageContainer />
+            )}
+            {userGroup && (
+              <>
+                <NetworkingRoomContainer />
+              </>
+            )}
+            {!userGroup &&
+              (userCurrentLocation === VERTICAL_NAV_OPTIONS.networking ||
+                userCurrentLocation === VERTICAL_NAV_OPTIONS.rooms) && (
+                <div className={classes.noCall}>
+                  <Typography
+                    variant="h6"
+                    className={clsx(classes.blueText, classes.emptyMessage)}
+                  >
+                    You are not in any{" "}
+                    <span className={classes.greenText}>conversation</span> yet,
+                    <br />
+                    don't be shy and{" "}
+                    <span className={classes.greenText}>
+                      select someone
+                    </span> to <span className={classes.greenText}>talk</span>{" "}
+                    to!
+                  </Typography>
+                </div>
+              )}
+            {!userGroup &&
+              (userCurrentLocation === VERTICAL_NAV_OPTIONS.networking ||
+                userCurrentLocation === VERTICAL_NAV_OPTIONS.rooms ||
+                userCurrentLocation === VERTICAL_NAV_OPTIONS.lobby) && (
+                <a
+                  href="https://veertly.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {/* 
+                  PLEASE DO NOT REMOVE OR CHANGE THIS IMAGE 
+                  Do not hesitate to contact info@veertly.com in case of any 
+                  question or need of further customizations*/}
+                  <img
+                    alt="Powered by Veertly"
+                    src={PoweredByVeertly}
+                    className={classes.poweredByVeertly}
+                  />
+                </a>
+              )}
+          </div>
+          <SmallPlayerContainer bounds={smallPlayerBounds} />
+        </>
       )}
     </div>
   );
 });
+
+// EventSessionContainer.whyDidYouRender = true;
+
+export default EventSessionContainer;

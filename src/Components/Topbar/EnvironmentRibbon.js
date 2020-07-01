@@ -4,7 +4,7 @@ import { makeStyles } from "@material-ui/styles";
 import { Typography } from "@material-ui/core";
 import { isProd, isStage } from "../../Modules/environments";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles((theme) => ({
   cornerRibbon: {
     width: "100px",
     background: "#e43",
@@ -18,7 +18,7 @@ const useStyles = makeStyles(theme => ({
     "-webkit-transform": "rotate(-45deg)",
     boxShadow: "0 0 3px rgba(0,0,0,.3)",
     position: "fixed",
-    zIndex: 10000
+    zIndex: 1101
   },
   ribbonStage: {
     background: theme.palette.secondary.main
@@ -31,7 +31,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-const EnvironmentRibbon = props => {
+const EnvironmentRibbon = (props) => {
   const classes = useStyles();
 
   if (isProd()) return null;
@@ -45,13 +45,14 @@ const EnvironmentRibbon = props => {
       </div>
     );
   }
-  return (
-    <div className={`${classes.cornerRibbon} ${classes.ribbonStage}`}>
-      <Typography color="inherit" className={classes.text}>
-        Dev
-      </Typography>
-    </div>
-  );
+  return null;
+  // return (
+  //   <div className={`${classes.cornerRibbon} ${classes.ribbonStage}`}>
+  //     <Typography color="inherit" className={classes.text}>
+  //       Dev
+  //     </Typography>
+  //   </div>
+  // );
 };
 
 export default EnvironmentRibbon;

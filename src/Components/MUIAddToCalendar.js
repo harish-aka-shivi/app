@@ -8,18 +8,19 @@ import ListItemAvatar from "@material-ui/core/ListItemAvatar";
 import ListItemText from "@material-ui/core/ListItemText";
 import Dialog from "@material-ui/core/Dialog";
 import { blue } from "@material-ui/core/colors";
-import moment from "moment";
+import * as moment from "moment";
 import { isMobile } from "../Utils/device";
 import CalendarIcon from "@material-ui/icons/Event";
+import { trackEvent } from "../Modules/analytics";
 const useStyles = makeStyles({
   avatar: {
     backgroundColor: blue[100],
-    color: blue[600],
+    color: blue[600]
   },
   icon: {
     maxWidth: 40,
-    maxHeight: 35,
-  },
+    maxHeight: 35
+  }
 });
 
 function SimpleDialog(props) {
@@ -46,12 +47,16 @@ function SimpleDialog(props) {
     let start = startTime.format("DD/MM/YYYY HH:mm:ss");
 
     // calculate the difference in milliseconds between the start and end times
-    let difference = moment(end, "DD/MM/YYYY HH:mm:ss").diff(moment(start, "DD/MM/YYYY HH:mm:ss"));
+    let difference = moment(end, "DD/MM/YYYY HH:mm:ss").diff(
+      moment(start, "DD/MM/YYYY HH:mm:ss")
+    );
 
     // convert difference from above to a proper momentJs duration object
     let duration = moment.duration(difference);
 
-    return Math.floor(duration.asHours()) + moment.utc(difference).format(":mm");
+    return (
+      Math.floor(duration.asHours()) + moment.utc(difference).format(":mm")
+    );
   };
   const buildUrl = (type) => {
     let calendarUrl = "";
@@ -95,28 +100,33 @@ function SimpleDialog(props) {
       default:
         calendarUrl = [
           "BEGIN:VCALENDAR",
+          "PRODID:-//Veertly//NONSGML EventCalender//EN",
           "VERSION:2.0",
           "BEGIN:VEVENT",
+          "UID:" + event.id,
           "URL:" + document.URL,
           "DTSTART:" + formatTime(event.startTime),
           "DTEND:" + formatTime(event.endTime),
           "SUMMARY:" + event.title,
-          "DESCRIPTION:" + event.description,
+          "DESCRIPTION:" + event.rawDescription,
+          'X-ALT-DESC;FMTTYPE=text/html:<!DOCTYPE html><html lang="en"><body>' +
+            event.description +
+            "</body></html>",
           "LOCATION:" + event.location,
           "END:VEVENT",
-          "END:VCALENDAR",
-        ].join("\n");
+          "END:VCALENDAR"
+        ].join("\r\n");
     }
-
     return calendarUrl;
   };
 
   const handleListItemClick = (type) => {
     let url = buildUrl(type);
     // console.log(url);
+    trackEvent("Add to calendar " + type + " clicked", { eventId: event.id });
 
     if (!isMobile() && (url.startsWith("data") || url.startsWith("BEGIN"))) {
-      let filename = "download.ics";
+      let filename = `${event.title}.ics`;
       let blob = new Blob([url], { type: "text/calendar;charset=utf-8" });
 
       /****************************************************************
@@ -126,7 +136,8 @@ function SimpleDialog(props) {
         ****************************************************************/
       let link = document.createElement("a");
       link.href = window.URL.createObjectURL(blob);
-      link.setAttribute(event.id, filename);
+      // link.setAttribute(event.id, filename);
+      link.setAttribute("download", filename);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -137,7 +148,11 @@ function SimpleDialog(props) {
   };
 
   return (
-    <Dialog onClose={handleClose} aria-labelledby="simple-dialog-title" open={open}>
+    <Dialog
+      onClose={handleClose}
+      aria-labelledby="simple-dialog-title"
+      open={open}
+    >
       {/* <DialogTitle id="simple-dialog-title">Set backup account</DialogTitle> */}
       <List>
         <ListItem button onClick={() => handleListItemClick("google")}>
@@ -145,28 +160,40 @@ function SimpleDialog(props) {
             {/* <Avatar className={classes.avatar}> */}
             {/* <FontAwesomeIcon icon={faGoogle} /> */}
             {/* </Avatar> */}
-            <img src="/icons/calendar/google-calendar.svg" alt="Google Calendar" className={classes.icon} />
+            <img
+              src="/icons/calendar/google-calendar.svg"
+              alt="Google Calendar"
+              className={classes.icon}
+            />
           </ListItemAvatar>
           <ListItemText primary={"Google"} />
         </ListItem>
-
+        {/* 
         <ListItem button onClick={() => handleListItemClick("outlookcom")}>
           <ListItemAvatar>
             <img src="/icons/calendar/outlook.svg" alt="Outlook" className={classes.icon} />
           </ListItemAvatar>
           <ListItemText primary={"Outlook"} />
-        </ListItem>
+        </ListItem> */}
 
         <ListItem button onClick={() => handleListItemClick("yahoo")}>
           <ListItemAvatar>
-            <img src="/icons/calendar/yahoo.svg" alt="Outlook" className={classes.icon} />
+            <img
+              src="/icons/calendar/yahoo.svg"
+              alt="Yahoo"
+              className={classes.icon}
+            />
           </ListItemAvatar>
           <ListItemText primary={"Yahoo"} />
         </ListItem>
 
         <ListItem button onClick={() => handleListItemClick("download")}>
           <ListItemAvatar>
-            <img src="/icons/calendar/default-calendar.svg" alt="Outlook" className={classes.icon} />
+            <img
+              src="/icons/calendar/default-calendar.svg"
+              alt="Calendar .ics"
+              className={classes.icon}
+            />
           </ListItemAvatar>
           <ListItemText primary={"Download .ics"} />
         </ListItem>
@@ -186,7 +213,7 @@ function SimpleDialog(props) {
 
 SimpleDialog.propTypes = {
   onClose: PropTypes.func.isRequired,
-  open: PropTypes.bool.isRequired,
+  open: PropTypes.bool.isRequired
 };
 
 export default function MUIAddToCalendar(props) {
